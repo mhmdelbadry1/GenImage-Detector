@@ -2,6 +2,12 @@
 
 A repository for detecting generated images using machine learning.
 
+## 🎯 Want to Invite Collaborators? 
+
+**Stop asking "What's your username?"** - Just share links instead!
+
+👉 **[See Quick Start Guide](QUICK_START.md)** for the fastest way to invite people.
+
 ## Collaborator Invitation
 
 Instead of asking collaborators for their GitHub usernames one by one, you can share the repository invite link directly with them.
