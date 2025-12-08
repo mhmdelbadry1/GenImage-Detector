@@ -1,0 +1,25 @@
+{
+    // ... أي إعدادات أخرى للمشروع
+    "files.exclude": {
+        // الفولدرات الأساسية التي يتم تجاهلها عادة
+        "**/.git": true,
+        "**/.svn": true,
+        "**/.DS_Store": true,
+
+        // فولدرات Python الشائعة
+        "**/__pycache__": true,
+        "**/.pytest_cache": true,
+        "**/.mypy_cache": true,
+
+        // فولدرات البيئات الافتراضية (Virtual Environments)
+        "**/venv": true,
+        "**/env": true,
+
+        // فولدرات مكتبات Node.js (قد تكون موجودة)
+        "**/node_modules": true,
+
+        // أي فولدرات ضخمة للبيانات (Data Folders) لا تحتاج لتصفحها في VS Code
+        "**/large_datasets": true,
+        "**/raw_data": true
+    }
+}
