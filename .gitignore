@@ -1,1 +1,13 @@
+# Dataset directories
 /data
+downloaded_dataset/
+
+# Archive files
+*.zip
+*.z[0-9][0-9]
+
+# Temporary/test scripts
+inspect_drive.py
+scrape_folder.py
+download_data.py
+download_with_rclone.sh
