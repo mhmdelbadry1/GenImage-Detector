@@ -17,10 +17,10 @@ set -e  # Exit on error
 
 # Default folders to download (edit this list as needed)
 DEFAULT_FOLDERS=(
-    "ADM"
+    # "ADM"
     "BigGAN"
     # "glide"
-    "Midjourney"
+    # "Midjourney"
     # "VQDM"
     # "stable_diffusion_v_1_4"
     "stable_diffusion_v_1_5"
@@ -249,6 +249,95 @@ cleanup_archives() {
     echo "✓ Cleanup complete: $folder"
 }
 
+split_train_val() {
+    local folder=$1
+    local data_folder="${DATA_DIR}/${folder}"
+    
+    print_step "Splitting train/val for: $folder"
+    
+    # Find the extracted folder (e.g., imagenet_ai_0508_adm)
+    local extracted_folder=$(find "$data_folder" -mindepth 1 -maxdepth 1 -type d | head -n 1)
+    
+    if [ -z "$extracted_folder" ]; then
+        echo "ERROR: No extracted folder found in $data_folder"
+        return 1
+    fi
+    
+    local train_dir="$extracted_folder/train"
+    
+    if [ ! -d "$train_dir" ]; then
+        echo "ERROR: No train directory found in $extracted_folder"
+        return 1
+    fi
+    
+    # Create val directory structure
+    local val_dir="$extracted_folder/val"
+    mkdir -p "$val_dir/ai"
+    mkdir -p "$val_dir/nature"
+    
+    echo "Created val directories: $val_dir/{ai,nature}"
+    
+    # Split ai images (80% train, 20% val)
+    if [ -d "$train_dir/ai" ]; then
+        local ai_files=($(find "$train_dir/ai" -type f \( -name "*.PNG" -o -name "*.jpg" -o -name "*.JPEG" -o -name "*.png" \)))
+        local total_ai=${#ai_files[@]}
+        local val_count=$((total_ai / 5))  # 20% for validation
+        
+        echo "Splitting AI images: $total_ai total → $val_count to val"
+        
+        # Shuffle and move 20% to val
+        for ((i=0; i<val_count; i++)); do
+            local random_idx=$((RANDOM % ${#ai_files[@]}))
+            mv "${ai_files[$random_idx]}" "$val_dir/ai/"
+            # Remove from array
+            ai_files=("${ai_files[@]:0:$random_idx}" "${ai_files[@]:$((random_idx+1))}")
+        done
+        
+        echo "  ✓ Moved $val_count AI images to val"
+    fi
+    
+    # Split nature images (80% train, 20% val)
+    if [ -d "$train_dir/nature" ]; then
+        local nature_files=($(find "$train_dir/nature" -type f \( -name "*.PNG" -o -name "*.jpg" -o -name "*.JPEG" -o -name "*.png" \)))
+        local total_nature=${#nature_files[@]}
+        local val_count=$((total_nature / 5))  # 20% for validation
+        
+        echo "Splitting nature images: $total_nature total → $val_count to val"
+        
+        # Shuffle and move 20% to val
+        for ((i=0; i<val_count; i++)); do
+            local random_idx=$((RANDOM % ${#nature_files[@]}))
+            mv "${nature_files[$random_idx]}" "$val_dir/nature/"
+            # Remove from array
+            nature_files=("${nature_files[@]:0:$random_idx}" "${nature_files[@]:$((random_idx+1))}")
+        done
+        
+        echo "  ✓ Moved $val_count nature images to val"
+    fi
+    
+    # Now reorganize to match README structure: data/ADM/train/ai instead of data/ADM/imagenet_ai_0508_adm/train/ai
+    local base_name=$(basename "$extracted_folder")
+    local temp_rename="${data_folder}_temp"
+    
+    # Move contents up one level
+    mv "$extracted_folder/train" "$data_folder/train_tmp"
+    mv "$extracted_folder/val" "$data_folder/val_tmp"
+    rm -rf "$extracted_folder"
+    mv "$data_folder/train_tmp" "$data_folder/train"
+    mv "$data_folder/val_tmp" "$data_folder/val"
+    
+    echo ""
+    echo "✓ Train/Val split complete: $folder"
+    echo "  Structure:"
+    echo "    $folder/train/ai ($(find "$data_folder/train/ai" -type f | wc -l) images)"
+    echo "    $folder/train/nature ($(find "$data_folder/train/nature" -type f | wc -l) images)"
+    echo "    $folder/val/ai ($(find "$data_folder/val/ai" -type f | wc -l) images)"
+    echo "    $folder/val/nature ($(find "$data_folder/val/nature" -type f | wc -l) images)"
+    
+    return 0
+}
+
+
 #------------------------------------------------------------------------------
 # Main execution
 #------------------------------------------------------------------------------
@@ -282,7 +371,13 @@ for folder in "${FOLDERS[@]}"; do
         if extract_archives "$folder"; then
             # Cleanup
             cleanup_archives "$folder"
-            SUCCESSFUL+=("$folder")
+            # Split train/val
+            if split_train_val "$folder"; then
+                SUCCESSFUL+=("$folder")
+            else
+                echo "ERROR: Train/Val split failed for $folder"
+                FAILED+=("$folder (split)")
+            fi
         else
             echo "ERROR: Extraction failed for $folder"
             FAILED+=("$folder (extraction)")
