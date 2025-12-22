@@ -6,7 +6,7 @@
 # This script downloads specific folders from the GenImage dataset, extracts
 # split zip archives, and organizes the data for use in the project.
 #
-# Usage: ./setup_dataset.sh [--folders folder1,folder2,...]
+# Usage: ./setup_dataset.sh [--folders folder1,folder2,...] [--samples N]
 ################################################################################
 
 set -e  # Exit on error
@@ -44,6 +44,7 @@ DATA_DIR="data"
 #------------------------------------------------------------------------------
 
 FOLDERS=("${DEFAULT_FOLDERS[@]}")
+SAMPLES=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -51,14 +52,19 @@ while [[ $# -gt 0 ]]; do
             IFS=',' read -ra FOLDERS <<< "$2"
             shift 2
             ;;
+        --samples)
+            SAMPLES="$2"
+            shift 2
+            ;;
         --help|-h)
-            echo "Usage: $0 [--folders folder1,folder2,...]"
+            echo "Usage: $0 [--folders folder1,folder2,...] [--samples N]"
             echo ""
             echo "Downloads and extracts specified folders from the GenImage dataset."
             echo ""
             echo "Options:"
             echo "  --folders    Comma-separated list of folders to download"
-            echo "               (default: ADM,BigGAN,glide,Midjourney)"
+            echo "               (default: all folders)"
+            echo "  --samples    Number of images to extract per folder (optional)"
             echo "  --help       Show this help message"
             exit 0
             ;;
@@ -141,7 +147,7 @@ check_rclone_config() {
 check_drive_folder() {
     print_step "Checking for GenImage folder in your Drive..."
     
-    if ! rclone lsf "${REMOTE_NAME}:" --max-depth 1 --dirs-only | grep -q "^${DRIVE_FOLDER}/"; then
+    if ! rclone lsf "${REMOTE_NAME}:" --drive-shared-with-me --max-depth 1 --dirs-only | grep -q "^${DRIVE_FOLDER}/"; then
         echo "ERROR: Folder '${DRIVE_FOLDER}' not found in your Google Drive."
         echo ""
         echo "Please add the shared folder to your Drive:"
@@ -168,6 +174,7 @@ download_folder() {
     mkdir -p "$dest"
     
     rclone copy "$source" "$dest" \
+        --drive-shared-with-me \
         --progress \
         --transfers 4 \
         --checkers 8 \
@@ -207,14 +214,68 @@ extract_archives() {
         local basename=$(basename "$zip_file")
         echo "Extracting: $basename"
         
-        # Use 7z to extract (handles split archives automatically)
+        # Determine extraction tool
+        local extract_cmd=""
         if command -v 7z &> /dev/null; then
-            7z x "$zip_file" -o"$dest_dir" -y
+            extract_cmd="7z"
         elif command -v 7za &> /dev/null; then
-            7za x "$zip_file" -o"$dest_dir" -y
+            extract_cmd="7za"
         else
             echo "ERROR: No extraction tool found (7z/7za)"
             return 1
+        fi
+
+        if [ -n "$SAMPLES" ]; then
+            echo "  Targeting $SAMPLES samples (balanced)..."
+            
+            # List all files first
+            local list_file="${TEMP_DIR}/${folder}_files.txt"
+            $extract_cmd l -ba -slt "$zip_file" | grep -E "^Path = .*\.(png|PNG|jpg|JPG|jpeg|JPEG)$" | sed 's/^Path = // ' > "$list_file"
+            
+            # Filter AI and Nature files
+            # We assume paths contain 'ai' or 'nature' keywords as observed in BigGAN
+            grep -i "/ai/" "$list_file" > "${TEMP_DIR}/ai_files.txt"
+            grep -i "/nature/" "$list_file" > "${TEMP_DIR}/nature_files.txt"
+            
+            local ai_count=$(wc -l < "${TEMP_DIR}/ai_files.txt")
+            local nature_count=$(wc -l < "${TEMP_DIR}/nature_files.txt")
+            
+            echo "    Found in archive: $ai_count AI images, $nature_count Nature images"
+            
+            # Calculate samples per class (half of total requested)
+            local samples_per_class=$((SAMPLES / 2))
+            
+            # Create extraction list
+            rm -f "${TEMP_DIR}/extract_list.txt"
+            
+            # Sample AI
+            if [ "$ai_count" -gt 0 ]; then
+                shuf "${TEMP_DIR}/ai_files.txt" | head -n "$samples_per_class" >> "${TEMP_DIR}/extract_list.txt"
+            fi
+            
+            # Sample Nature
+            if [ "$nature_count" -gt 0 ]; then
+                shuf "${TEMP_DIR}/nature_files.txt" | head -n "$samples_per_class" >> "${TEMP_DIR}/extract_list.txt"
+            fi
+            
+            local extract_count=$(wc -l < "${TEMP_DIR}/extract_list.txt")
+            
+            if [ "$extract_count" -eq 0 ]; then
+                echo "  WARNING: No matching files found to extract!"
+                continue
+            fi
+            
+            echo "  Extracting $extract_count files ($samples_per_class AI, $samples_per_class Nature)..."
+            
+            # Extract
+            # 7z extracts with full paths by default, which preserves the 'train/val' structure
+            $extract_cmd x "$zip_file" -o"$dest_dir" -i@"${TEMP_DIR}/extract_list.txt" -y > /dev/null
+            
+            rm -f "$list_file" "${TEMP_DIR}/ai_files.txt" "${TEMP_DIR}/nature_files.txt" "${TEMP_DIR}/extract_list.txt"
+            
+        else
+            # Full extraction
+            $extract_cmd x "$zip_file" -o"$dest_dir" -y
         fi
         
         if [ $? -eq 0 ]; then
@@ -249,93 +310,7 @@ cleanup_archives() {
     echo "✓ Cleanup complete: $folder"
 }
 
-split_train_val() {
-    local folder=$1
-    local data_folder="${DATA_DIR}/${folder}"
-    
-    print_step "Splitting train/val for: $folder"
-    
-    # Find the extracted folder (e.g., imagenet_ai_0508_adm)
-    local extracted_folder=$(find "$data_folder" -mindepth 1 -maxdepth 1 -type d | head -n 1)
-    
-    if [ -z "$extracted_folder" ]; then
-        echo "ERROR: No extracted folder found in $data_folder"
-        return 1
-    fi
-    
-    local train_dir="$extracted_folder/train"
-    
-    if [ ! -d "$train_dir" ]; then
-        echo "ERROR: No train directory found in $extracted_folder"
-        return 1
-    fi
-    
-    # Create val directory structure
-    local val_dir="$extracted_folder/val"
-    mkdir -p "$val_dir/ai"
-    mkdir -p "$val_dir/nature"
-    
-    echo "Created val directories: $val_dir/{ai,nature}"
-    
-    # Split ai images (80% train, 20% val)
-    if [ -d "$train_dir/ai" ]; then
-        local ai_files=($(find "$train_dir/ai" -type f \( -name "*.PNG" -o -name "*.jpg" -o -name "*.JPEG" -o -name "*.png" \)))
-        local total_ai=${#ai_files[@]}
-        local val_count=$((total_ai / 5))  # 20% for validation
-        
-        echo "Splitting AI images: $total_ai total → $val_count to val"
-        
-        # Shuffle and move 20% to val
-        for ((i=0; i<val_count; i++)); do
-            local random_idx=$((RANDOM % ${#ai_files[@]}))
-            mv "${ai_files[$random_idx]}" "$val_dir/ai/"
-            # Remove from array
-            ai_files=("${ai_files[@]:0:$random_idx}" "${ai_files[@]:$((random_idx+1))}")
-        done
-        
-        echo "  ✓ Moved $val_count AI images to val"
-    fi
-    
-    # Split nature images (80% train, 20% val)
-    if [ -d "$train_dir/nature" ]; then
-        local nature_files=($(find "$train_dir/nature" -type f \( -name "*.PNG" -o -name "*.jpg" -o -name "*.JPEG" -o -name "*.png" \)))
-        local total_nature=${#nature_files[@]}
-        local val_count=$((total_nature / 5))  # 20% for validation
-        
-        echo "Splitting nature images: $total_nature total → $val_count to val"
-        
-        # Shuffle and move 20% to val
-        for ((i=0; i<val_count; i++)); do
-            local random_idx=$((RANDOM % ${#nature_files[@]}))
-            mv "${nature_files[$random_idx]}" "$val_dir/nature/"
-            # Remove from array
-            nature_files=("${nature_files[@]:0:$random_idx}" "${nature_files[@]:$((random_idx+1))}")
-        done
-        
-        echo "  ✓ Moved $val_count nature images to val"
-    fi
-    
-    # Now reorganize to match README structure: data/ADM/train/ai instead of data/ADM/imagenet_ai_0508_adm/train/ai
-    local base_name=$(basename "$extracted_folder")
-    local temp_rename="${data_folder}_temp"
-    
-    # Move contents up one level
-    mv "$extracted_folder/train" "$data_folder/train_tmp"
-    mv "$extracted_folder/val" "$data_folder/val_tmp"
-    rm -rf "$extracted_folder"
-    mv "$data_folder/train_tmp" "$data_folder/train"
-    mv "$data_folder/val_tmp" "$data_folder/val"
-    
-    echo ""
-    echo "✓ Train/Val split complete: $folder"
-    echo "  Structure:"
-    echo "    $folder/train/ai ($(find "$data_folder/train/ai" -type f | wc -l) images)"
-    echo "    $folder/train/nature ($(find "$data_folder/train/nature" -type f | wc -l) images)"
-    echo "    $folder/val/ai ($(find "$data_folder/val/ai" -type f | wc -l) images)"
-    echo "    $folder/val/nature ($(find "$data_folder/val/nature" -type f | wc -l) images)"
-    
-    return 0
-}
+
 
 
 #------------------------------------------------------------------------------
@@ -370,14 +345,8 @@ for folder in "${FOLDERS[@]}"; do
         # Extract
         if extract_archives "$folder"; then
             # Cleanup
-            cleanup_archives "$folder"
-            # Split train/val
-            if split_train_val "$folder"; then
-                SUCCESSFUL+=("$folder")
-            else
-                echo "ERROR: Train/Val split failed for $folder"
-                FAILED+=("$folder (split)")
-            fi
+            # cleanup_archives "$folder"
+            SUCCESSFUL+=("$folder")
         else
             echo "ERROR: Extraction failed for $folder"
             FAILED+=("$folder (extraction)")
