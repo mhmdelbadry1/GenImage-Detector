@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Upload Test</title>
+</head>
+<body>
+    <h1>Simple Upload Test</h1>
+    <input type="file" id="testInput" accept="image/*">
+    <br><br>
+    <div id="status"></div>
+    
+    <script>
+        document.getElementById('testInput').addEventListener('change', function(e) {
+            document.getElementById('status').innerHTML = 'File selected: ' + e.target.files[0].name;
+            console.log('File selected:', e.target.files[0]);
+        });
+        console.log('Test page loaded successfully');
+    </script>
+</body>
+</html>

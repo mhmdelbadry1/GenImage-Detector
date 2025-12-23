@@ -1,0 +1,41 @@
+nohup: ignoring input
+/home/astro/deepleaning/github_submission/website/app.py:69: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  checkpoint = torch.load(config['checkpoint'], map_location=device)
+============================================================
+Loading Deep fake Detection Models...
+============================================================
+✓ SimpleCNN    loaded on GPU 0
+✓ ResNet50     loaded on GPU 1
+✓ SSP          loaded on GPU 2
+============================================================
+Successfully loaded 3/3 models
+============================================================
+
+
+🚀 Starting Deepfake Detection Web Server...
+📍 Access at: http://localhost:5000
+Press Ctrl+C to stop
+
+ * Serving Flask app 'app'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://10.55.205.205:5000
+[33mPress CTRL+C to quit[0m
+127.0.0.1 - - [23/Dec/2025 07:23:46] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [23/Dec/2025 07:23:56] "POST /predict HTTP/1.1" 200 -
+127.0.0.1 - - [23/Dec/2025 07:24:07] "POST /predict HTTP/1.1" 200 -
+127.0.0.1 - - [23/Dec/2025 07:24:22] "POST /predict HTTP/1.1" 200 -
+127.0.0.1 - - [23/Dec/2025 07:24:29] "POST /predict HTTP/1.1" 200 -
+127.0.0.1 - - [23/Dec/2025 07:24:33] "POST /predict HTTP/1.1" 200 -
+127.0.0.1 - - [23/Dec/2025 07:24:36] "POST /predict HTTP/1.1" 200 -
+127.0.0.1 - - [23/Dec/2025 07:24:46] "POST /predict HTTP/1.1" 200 -
+127.0.0.1 - - [23/Dec/2025 07:25:08] "POST /predict HTTP/1.1" 200 -
+127.0.0.1 - - [23/Dec/2025 07:25:21] "POST /predict HTTP/1.1" 200 -
+127.0.0.1 - - [23/Dec/2025 07:25:46] "POST /predict HTTP/1.1" 200 -
+127.0.0.1 - - [23/Dec/2025 07:25:52] "POST /predict HTTP/1.1" 200 -
+127.0.0.1 - - [23/Dec/2025 07:25:55] "POST /predict HTTP/1.1" 200 -
+127.0.0.1 - - [23/Dec/2025 07:26:15] "POST /predict HTTP/1.1" 200 -
+127.0.0.1 - - [23/Dec/2025 07:26:20] "POST /predict HTTP/1.1" 200 -
+127.0.0.1 - - [23/Dec/2025 07:27:04] "POST /predict HTTP/1.1" 200 -
